@@ -7,6 +7,7 @@ import os
 from modules.script_generator import generate_script, print_script
 from modules.fact_checker import check_facts, print_fact_check
 from modules.voice_generator import generate_voice_for_script, print_audio_summary
+from modules.video_fetcher import fetch_videos_for_script, print_video_summary
 
 # --- CONFIG ---
 topic = "Viking raid on Paris 845 AD"
@@ -61,11 +62,18 @@ for attempt in range(1, max_attempts + 1):
                 }, f, indent=2)
             print(f"💾 Saved to: {review_file}")
 
+
 # STEP 3 — Generate voice if script was approved
 if approved_script:
     print(f"\n🎙️  STEP 3 — Voice Generation")
     print(f"{'-'*50}")
     audio_result = generate_voice_for_script(approved_script)
     print_audio_summary(audio_result)
+
+    # STEP 4 — Fetch video clips
+    print(f"\n🎬  STEP 4 — Video Fetching")
+    print(f"{'-'*50}")
+    video_result = fetch_videos_for_script(approved_script)
+    print_video_summary(video_result)
 else:
-    print(f"\n⚠️  Skipping voice generation — no approved script.")
+    print(f"\n⚠️  Skipping — no approved script.")

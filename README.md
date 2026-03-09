@@ -121,16 +121,16 @@ python3 test_script.py
 
 ---
 
-## 📊 Pipeline Status
+## Pipeline Status
 
-| Module              | Status         | Description                           |
-| ------------------- | -------------- | ------------------------------------- |
-| script_generator.py | ✅ Complete    | Generates 5-segment narration scripts |
-| fact_checker.py     | 🔨 In progress | Verifies historical accuracy          |
-| voice_generator.py  | ⬜ Planned     | ElevenLabs voice synthesis            |
-| video_fetcher.py    | ⬜ Planned     | Pexels stock footage sourcing         |
-| translator.py       | ⬜ Planned     | DeepL multi-language support          |
-| assembler.py        | ⬜ Planned     | FFmpeg video assembly                 |
+| Module | Status | Description |
+|---|---|---|
+| script_generator.py | ✅ Complete | Generates 5-segment narration scripts |
+| fact_checker.py | ✅ Complete | Verifies historical accuracy with feedback loop |
+| voice_generator.py | ✅ Complete | ElevenLabs voice synthesis with retry |
+| video_fetcher.py | ✅ Complete | Pixazo AI images + Ken Burns effect |
+| translator.py | ⬜ Planned | DeepL multi-language support |
+| assembler.py | 🔨 Next | FFmpeg video + audio + captions assembly |
 
 ---
 
