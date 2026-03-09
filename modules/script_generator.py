@@ -59,6 +59,10 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
 
     STRICT RULES:
     - Split the script into exactly 5 segments
+    - All visuals must be historically accurate to the time period
+    - NEVER suggest modern locations, modern cities, or present day footage
+    - NEVER suggest aerial footage — use ground level medieval scenes only
+    - Visuals must show medieval/ancient settings, warriors, battles, landscapes
     - Each segment is 1-2 sentences maximum
     - Language must be {language}
     - Tone is dramatic, engaging, educational
