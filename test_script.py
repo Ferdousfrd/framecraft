@@ -8,9 +8,10 @@ from modules.script_generator import generate_script, print_script
 from modules.fact_checker import check_facts, print_fact_check
 from modules.voice_generator import generate_voice_for_script, print_audio_summary
 from modules.video_fetcher import fetch_videos_for_script, print_video_summary
+from modules.assembler import assemble_reel
 
 # --- CONFIG ---
-topic = "Viking raid on Paris 845 AD"
+topic = "Battle of Stamford Bridge 1066"
 max_attempts = 3
 best_script = None
 best_fact_check = None
@@ -70,10 +71,28 @@ if approved_script:
     audio_result = generate_voice_for_script(approved_script)
     print_audio_summary(audio_result)
 
-    # STEP 4 — Fetch video clips
+# STEP 4 — Fetch video clips
     print(f"\n🎬  STEP 4 — Video Fetching")
     print(f"{'-'*50}")
     video_result = fetch_videos_for_script(approved_script)
     print_video_summary(video_result)
 else:
     print(f"\n⚠️  Skipping — no approved script.")
+
+
+
+
+# STEP 5 — Assemble final reel
+# Pass audio paths so Whisper transcribes each segment for captions
+approved_script['audio_paths'] = audio_result['audio_paths']
+
+if approved_script:
+    print(f"\n🎬  STEP 5 — Assembling Final Reel")
+    print(f"{'-'*50}")
+    final_reel = assemble_reel(
+        script=approved_script,
+        audio_result=audio_result,
+        video_result=video_result
+    )
+    print(f"\n🔥 YOUR FIRST IRONNORTH REEL IS READY!")
+    print(f"📁 {final_reel}")

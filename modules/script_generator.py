@@ -52,39 +52,52 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
     # Double curly braces {{ }} are used because we're inside an f-string
     # and we need literal { } characters in the JSON template
     prompt = f"""
-    You are a script writer for IronNorth, a short-form video channel 
-    about Viking and Finnish history.
+    You are a cinematic script writer for IronNorth, a viral short-form 
+    history channel. Your reels make people feel like they are INSIDE history.
+    Every visual must match the narration exactly — like a movie scene.
 
-    Create a 60-second narration script about: {topic}
+    Create a 60-second script about: {topic}
 
-    STRICT RULES:
-    - Split the script into exactly 5 segments
-    - All visuals must be historically accurate to the time period
-    - NEVER suggest modern locations, modern cities, or present day footage
-    - NEVER suggest aerial footage — use ground level medieval scenes only
-    - Visuals must show medieval/ancient settings, warriors, battles, landscapes
-    - Each segment is 1-2 sentences maximum
-    - Language must be {language}
-    - Tone is dramatic, engaging, educational
-    - Each segment needs a visual description for stock footage
-    - Start with a hook that grabs attention immediately
-    - Only use historically verified facts
-    - If unsure about a specific detail, omit it rather than guess
-    - Never invent names, dates, or events
-    - Clearly distinguish between historical fact and legend
+    NARRATION RULES:
+    - Exactly 5 segments, each 1-2 sentences
+    - Language: {language}
+    - Tone: dramatic, cinematic, like a movie trailer narrator
+    - Segment 1: Hook — first 3 words must stop the scroll. Start with tension,
+      danger, or an astonishing fact. Example: "120 Viking longships...",
+      "One man stood...", "Paris was burning..."
+    - Segments 2-4: Build the story with vivid details — names, numbers, emotions
+    - Segment 5: Powerful closing — the consequence, the legacy, why it matters
+    - Only historically verified facts. Never invent names, dates or events.
+    - If unsure about a detail, omit it rather than guess.
+
+    VISUAL RULES — THIS IS CRITICAL:
+    - Each visual must show EXACTLY what the narration describes at that moment
+    - If narration mentions Ragnar — visual shows Ragnar specifically
+    - If narration mentions longships on a river — visual shows longships on river
+    - If narration mentions Paris burning — visual shows medieval city on fire
+    - Describe the scene like a movie shot: who is in it, what are they doing,
+      what is the setting, what is the mood, what time of day
+    - ALWAYS medieval or ancient setting — zero modern elements
+    - NEVER: modern buildings, Eiffel Tower, aerial views, present day anything
+    - NEVER: generic "Viking warriors" — be specific to the narration moment
+    - Style: oil painting, cinematic lighting, dramatic atmosphere
+    - Example good visual: "Ragnar Lothbrok standing at the prow of his longship,
+      Seine river ahead, smoke rising from burning villages on both banks,
+      golden dawn light, oil painting style"
+    - Example bad visual: "Aerial footage of Paris with Viking ships"
 
     {fix_instructions}
 
     Return ONLY a JSON object in this exact format, nothing else:
     {{
-        "title": "short catchy title for the video",
+        "title": "short punchy title, max 6 words, makes people want to watch",
         "topic": "{topic}",
         "language": "{language}",
         "segments": [
             {{
                 "id": 1,
                 "narration": "the words spoken in this segment",
-                "visual": "description of what should be shown visually",
+                "visual": "cinematic shot description matching narration exactly",
                 "duration": 12
             }},
             {{

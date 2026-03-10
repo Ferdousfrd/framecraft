@@ -134,6 +134,45 @@ def generate_audio(text: str, segment_id: int, output_dir: str, voice_id: str = 
         f"Last error: {last_error}"
     )
 
+def generate_segment_audio_edge_tts(text: str, segment_id: int, output_dir: str) -> str:
+    """
+    Fallback TTS using Microsoft edge-tts.
+    Free, no API key, good quality neural voice.
+    Used automatically when ElevenLabs quota is insufficient.
+
+    Voice: William (Australian male) — deep, authoritative,
+    perfect for dramatic history narration.
+
+    Args:
+        text:       Narration text to convert
+        segment_id: Segment number for filename
+        output_dir: Folder to save audio
+
+    Returns:
+        Path to saved MP3 file
+    """
+    import asyncio
+    import edge_tts
+
+    EDGE_VOICE = "en-AU-WilliamNeural"
+
+    print(f"  edge-tts generating segment {segment_id}...")
+
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"segment_{segment_id}.mp3")
+
+    async def generate():
+        tts = edge_tts.Communicate(text, voice=EDGE_VOICE)
+        await tts.save(output_path)
+
+    asyncio.run(generate())
+
+    if not os.path.exists(output_path):
+        raise Exception(f"edge-tts failed to save segment {segment_id}")
+
+    size_kb = os.path.getsize(output_path) / 1024
+    print(f"  ✅ Segment {segment_id} saved ({size_kb:.0f} KB): {output_path}")
+    return output_path
 
 def generate_voice_for_script(script: dict, output_dir: str = None) -> dict:
     """
@@ -162,6 +201,30 @@ def generate_voice_for_script(script: dict, output_dir: str = None) -> dict:
     if len(script['segments']) == 0:
         raise ValueError("Script segments list is empty")
 
+    # Check ElevenLabs credits before starting
+    # Count total characters needed for all segments
+    total_chars = sum(len(seg['narration']) for seg in script['segments'])
+    print(f"\n  Checking TTS provider...")
+    print(f"  Total characters needed: {total_chars}")
+
+    use_elevenlabs = False
+    try:
+        sub = requests.get(
+            'https://api.elevenlabs.io/v1/user/subscription',
+            headers={'xi-api-key': ELEVENLABS_API_KEY}
+        ).json()
+        remaining = sub['character_limit'] - sub['character_count']
+        print(f"  ElevenLabs credits remaining: {remaining}")
+
+        if remaining >= total_chars:
+            print(f"  ✅ Enough credits — using ElevenLabs (Harry voice)")
+            use_elevenlabs = True
+        else:
+            print(f"  ⚠️  Not enough credits ({remaining} remaining, {total_chars} needed)")
+            print(f"  ✅ Using edge-tts (William voice) for all segments")
+    except Exception as e:
+        print(f"  ⚠️  Could not check credits: {e} — defaulting to edge-tts")
+
     # Build timestamped output folder if not provided
     # Format: outputs/audio/20240115_143022_viking_raid_on_paris
     if output_dir is None:
@@ -178,11 +241,18 @@ def generate_voice_for_script(script: dict, output_dir: str = None) -> dict:
 
     for segment in script['segments']:
         try:
-            path = generate_audio(
-                text=segment['narration'],
-                segment_id=segment['id'],
-                output_dir=output_dir
-            )
+            if use_elevenlabs:
+                path = generate_audio(
+                    text=segment['narration'],
+                    segment_id=segment['id'],
+                    output_dir=output_dir
+                )
+            else:
+                path = generate_segment_audio_edge_tts(
+                    text=segment['narration'],
+                    segment_id=segment['id'],
+                    output_dir=output_dir
+                )
             audio_paths.append(path)
 
         except Exception as e:
