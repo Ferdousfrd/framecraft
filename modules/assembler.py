@@ -73,7 +73,8 @@ def get_audio_duration(audio_path: str) -> float:
 def merge_audio_video(video_path: str, audio_path: str, output_path: str) -> str:
     """
     Merges a video clip with its audio file.
-    Trims video to exactly match audio duration for perfect sync.
+    Video is padded with frozen last frame if audio is longer than clip.
+    This prevents audio getting cut off mid-sentence.
 
     Args:
         video_path:  Path to video clip (.mp4)
@@ -92,16 +93,20 @@ def merge_audio_video(video_path: str, audio_path: str, output_path: str) -> str
     duration = get_audio_duration(audio_path)
     print(f"    Audio duration: {duration:.2f}s")
 
+    # tpad=stop_mode=clone freezes the last frame if audio is longer than video
+    # This way narration always finishes before next segment starts
     cmd = [
         "ffmpeg",
         "-i", video_path,
         "-i", audio_path,
+        "-filter_complex",
+        "[0:v]tpad=stop_mode=clone:stop_duration=5[v]",
+        "-map", "[v]",
+        "-map", "1:a",
         "-t", str(duration),
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-c:v", "copy",
+        "-c:v", "libx264",
+        "-preset", "fast",
         "-c:a", "aac",
-        "-shortest",
         "-y",
         output_path
     ]

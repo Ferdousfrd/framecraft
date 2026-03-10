@@ -11,7 +11,7 @@ from modules.video_fetcher import fetch_videos_for_script, print_video_summary
 from modules.assembler import assemble_reel
 
 # --- CONFIG ---
-topic = "Battle of Stamford Bridge 1066"
+topic = os.environ.get("TOPIC", "Battle of Stamford Bridge 1066")
 max_attempts = 3
 best_script = None
 best_fact_check = None

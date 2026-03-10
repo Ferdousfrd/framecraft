@@ -58,6 +58,17 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
 
     Create a 60-second script about: {topic}
 
+    SERIES AWARENESS:
+    - If the topic mentions "Part X of Y" this is part of a multi-part series
+    - Start Part 1 with a strong hook introducing the character
+    - Parts 2-4 should briefly reference previous parts naturally in narration
+    - Final part should feel like an epic conclusion
+    - Each part must end with a subtle cliffhanger or "what comes next" feeling
+      so viewers follow for the next part
+    - Example ending: "But this was only the beginning...", 
+      "His greatest challenge was yet to come...",
+      "The snake pit awaited..."
+
     NARRATION RULES:
     - Exactly 5 segments, each 1-2 sentences
     - Language: {language}
