@@ -48,28 +48,31 @@ MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds between retries
 
 
-def build_image_prompt(visual_description: str, topic: str) -> str:
+def build_image_prompt(visual_description: str, topic: str, segment_id: int = 1) -> str:
     """
     Builds an optimized image generation prompt from a visual description.
-    Adding style keywords dramatically improves image quality.
-
-    Args:
-        visual_description: Raw visual description from script segment
-        topic:              Overall video topic for context
-
-    Returns:
-        Optimized prompt string for Pollinations AI
     """
+    # Segment specific negative prompts to force variety
+    segment_negative = {
+        1: "no people in foreground, no portrait, establishing shot only",
+        2: "no battle, no fighting, character portrait only",
+        3: "no single person standing, show battle and multiple warriors",
+        4: "no standing still, show motion and action",
+        5: "no battle, show aftermath and consequence"
+    }
 
-    # Style keywords proven to produce cinematic historical images
-    # These guide the AI toward documentary/epic movie aesthetics
+    negative_hint = segment_negative.get(segment_id, "")
+
     style_suffix = (
-        "epic cinematic lighting, dramatic atmosphere, "
-        "highly detailed, dark and moody, historically accurate, "
-        "oil painting style, 4k quality, dramatic shadows, "
-        "no text, no watermark, no modern elements"
+        f"{negative_hint}, "
+        "photorealistic, cinematic photography, film still, "
+        "dramatic cinematic lighting, ultra detailed, "
+        "sharp focus, historically accurate costume and setting, "
+        "epic movie production quality, 8k resolution, "
+        "no text, no watermark, no modern elements, "
+        "no extra limbs, anatomically correct, "
+        "professional color grading, anamorphic lens"
     )
-
     full_prompt = f"{visual_description}, {style_suffix}"
     return full_prompt
 
@@ -101,7 +104,7 @@ def generate_ai_image(visual_description: str, segment_id: int, output_dir: str,
         raise ValueError("Pixazo API key missing — check your .env file")
 
     # Build optimized prompt
-    prompt = build_image_prompt(visual_description, topic)
+    prompt = build_image_prompt(visual_description, topic, segment_id)
 
     print(f"  Generating AI image for segment {segment_id}...")
     print(f"  Prompt: {visual_description[:70]}...")

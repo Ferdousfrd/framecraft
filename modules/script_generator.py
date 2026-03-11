@@ -12,12 +12,13 @@
 import json
 from groq import Groq
 from config.settings import GROQ_API_KEY
+from modules.visual_researcher import research_visual_context, format_character_description
 
 # Initialize the Groq client with our API key
 # This client is reused for all API calls in this module
 client = Groq(api_key=GROQ_API_KEY)
 
-def generate_script(topic: str, language: str = "en", issues: list = None) -> dict:
+def generate_script(topic: str, language: str = "en", skip_research: bool = False, issues: list = None) -> dict:
     """
     Generates a 60-second narration script for a given topic.
     
@@ -48,9 +49,18 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
         Required fix: {issue['correction']}
         """
 
+    # Research historical visual context before writing script
+    visual_context = ""
+    if not skip_research:
+        research = research_visual_context(topic, language)
+        visual_context = format_character_description(research)
+        if visual_context:
+            print(f"  ✅ Visual research injected into script prompt")
+
     # Main prompt sent to the AI
     # Double curly braces {{ }} are used because we're inside an f-string
     # and we need literal { } characters in the JSON template
+
     prompt = f"""
     You are a cinematic script writer for IronNorth, a viral short-form 
     history channel. Your reels make people feel like they are INSIDE history.
@@ -83,19 +93,81 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
 
     VISUAL RULES — THIS IS CRITICAL:
     - Each visual must show EXACTLY what the narration describes at that moment
-    - If narration mentions Ragnar — visual shows Ragnar specifically, how he looked, clothings etc.
-    - If narration mentions longships on a river — visual shows longships on river
-    - If narration mentions Paris burning — visual shows medieval city on fire
-    - Describe the scene like a movie shot: who is in it, what are they doing,
-      what is the setting, what is the mood, what time of day
-    - ALWAYS medieval or ancient setting — zero modern elements
-    - NEVER: modern buildings, Eiffel Tower, aerial views, present day anything
-    - NEVER: generic "Viking warriors" — be specific to the narration moment
-    - Style: oil painting, cinematic lighting, dramatic atmosphere
-    - Example good visual: "Ragnar Lothbrok standing at the prow of his longship,
-      Seine river ahead, smoke rising from burning villages on both banks,
-      golden dawn light, oil painting style"
-    - Example bad visual: "Aerial footage of Paris with Viking ships"
+    - PHOTOREALISTIC style — like a movie still, NOT painting or illustration
+    - Real skin texture, real fabric, real dirt, real lighting — cinematic realism
+    - NEVER say oil painting, illustration, artwork, animated or drawn
+    - Each of the 5 segments MUST show a completely different scene
+    - Different location, different subject, different mood per segment
+    - Never generate the same scene twice — each segment tells a new visual story
+    - Segment 1 ≠ Segment 2 ≠ Segment 3 ≠ Segment 4 ≠ Segment 5
+
+    VARIETY RULE — CRITICAL:
+    - Each of the 5 segments MUST show a completely different scene
+    - Different location, different subject, different mood per segment
+    - Segment 1: establishing world — ships, army, landscape, NO main character yet
+    - Segment 2: introduce character — character portrait in their environment
+    - Segment 3: conflict/challenge — battle, storm, obstacle, enemy
+    - Segment 4: climax — the decisive moment, action, peak drama
+    - Segment 5: aftermath — consequence, legacy, emotional closing
+    - NEVER show the same location twice
+    - NEVER show character alone on ship more than once
+    
+    SHOT TYPES — vary these across segments for cinematic feel:
+    - Segment 1: WIDE establishing shot — show the scale, the world, the setting
+    - Segment 2: MEDIUM shot — character getting ready to fight in front of an army, in battlefield
+    - Segment 3: WIDE shot — dramatic detail
+    - Segment 4: ACTION shot — movement, battle, charge, dramatic moment
+    - Segment 5: WIDE or MEDIUM closing shot — powerful final image
+    
+    CHARACTER CONSISTENCY:
+    - Only describe character appearance in segment 2 (introduction)
+    - Segments 1, 3, 4, 5 — DO NOT describe the character's face or clothing
+    - Instead show the WORLD, the BATTLE, the ENVIRONMENT, the CONSEQUENCE
+    - Segment 1: NO character at all — just the world/army/landscape
+    - Segment 3: battle scene with multiple warriors — no named character
+    - Segment 4: action moment — character from behind or silhouette only
+    - Segment 5: aftermath — empty battlefield, legacy, symbolic image
+    
+    CAMERA ANGLE — always specify:
+    - "low angle looking up" = makes subject look powerful/intimidating
+    - "eye level" = intimate, personal, relatable  
+    - "high angle looking down" = shows scale of army/battlefield
+    - "over the shoulder" = puts viewer in the scene
+    
+    LIGHTING AND MOOD:
+    - Dawn/golden hour = hope, new beginning, epic journey
+    - Dusk/red sky = danger, battle, blood, end of era
+    - Overcast/grey = grim, determined, foreboding
+    - Torchlight/fire = chaos, raid, burning, victory
+    {visual_context}
+    SETTING DETAILS:
+    - Always specify time period appropriate details
+    - Viking era: longships, fur cloaks, iron helmets, axes, shields
+    - Always medieval/ancient — zero modern elements
+    - NEVER: modern buildings, aerial city views, present day anything
+    
+    EXAMPLE GOOD VISUALS:
+    - Segment 1 wide: "Wide shot of 300 Viking longships filling a dark fjord 
+      at dawn, mist rising from black water, hundreds of warriors at oars, 
+      red shields lining the hulls, photorealistic cinematic, low angle"
+    - Segment 2 medium-wide: "Ragnar Lothbrok, tall lean Viking, dark hair short beard, 
+      worn leather and iron armor, standing at ship stern commanding his crew, 
+      10 warriors rowing behind him, ocean horizon ahead, golden dawn light, 
+      medium-wide shot showing character AND crew, photorealistic"
+    - Segment 3: MEDIUM ACTION shot — two warriors fighting, weapons clashing, battle scene, never a close up of just hands
+    - Segment 4 action wide: "Wide battlefield shot, hundreds of Viking warriors 
+      clashing with enemy army, swords and axes raised, dust and smoke filling 
+      the air, bodies in motion everywhere, chaos of battle, low angle wide shot, 
+      photorealistic, no single character focus"
+    - Segment 5 wide: "High angle wide shot of Viking camp at night, 
+      hundreds of fires burning, longships beached on river bank, 
+      Paris burning in distance, aftermath of battle, dead bodies on the ground, crows flying, atmospheric photorealistic"
+      
+    EXAMPLE BAD VISUALS:
+    - "Viking warriors fighting" — too generic
+    - "Aerial footage of Paris" — modern/aerial
+    - "Oil painting of battle scene" — wrong style
+    - "Animated battle map" — wrong style
 
     {fix_instructions}
 
