@@ -83,7 +83,7 @@ def generate_script(topic: str, language: str = "en", issues: list = None) -> di
 
     VISUAL RULES — THIS IS CRITICAL:
     - Each visual must show EXACTLY what the narration describes at that moment
-    - If narration mentions Ragnar — visual shows Ragnar specifically
+    - If narration mentions Ragnar — visual shows Ragnar specifically, how he looked, clothings etc.
     - If narration mentions longships on a river — visual shows longships on river
     - If narration mentions Paris burning — visual shows medieval city on fire
     - Describe the scene like a movie shot: who is in it, what are they doing,
@@ -188,3 +188,5 @@ def print_script(script: dict) -> None:
         print(f"NARRATION: {segment['narration']}")
         print(f"VISUAL:    {segment['visual']}")
         print(f"{'-'*50}")
+
+

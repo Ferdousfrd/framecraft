@@ -6,11 +6,16 @@
 
 # Topics in order — Ragnar Lothbrok series
 TOPICS=(
-    "Ragnar Lothbrok Part 1 of 5: Who was Ragnar Lothbrok and why is he the most legendary Viking who ever lived. Hook the audience to follow the full story series."
-    "Ragnar Lothbrok Part 2 of 5: His childhood origins mysterious birth early skills and the traits that made him destined for greatness. Reference Part 1 briefly."
-    "Ragnar Lothbrok Part 3 of 5: His first raid on England the battle that launched his legend and made his name feared across Europe. Reference the series so far."
-    "Ragnar Lothbrok Part 4 of 5: The legendary siege of Paris 845 AD his greatest triumph that shocked the entire world. Reference the series so far."
-    "Ragnar Lothbrok Part 5 of 5: His capture death in the snake pit and the legacy he left behind. Epic conclusion to the full series."
+    "Sons of Ragnar Part 1 of 10: Bjorn Ironside - the son of Ragnar Lothbrok who became unconquerable, sailed the Mediterranean and made Rome tremble"
+    "Sons of Ragnar Part 2 of 10: Ivar the Boneless - the most feared and cunning of Ragnar's sons who conquered England without being able to walk"
+    "Sons of Ragnar Part 3 of 10: Rollo - the son who betrayed the Vikings, became a French duke and whose bloodline became the British royal family"
+    "Sons of Ragnar Part 4 of 10: Sigurd Snake-in-the-Eye - the son born with a mysterious mark in his eye and his legendary life"
+    "Sons of Ragnar Part 5 of 10: Ubbe - the peacemaker son of Ragnar who sailed to unknown lands and built a new Viking world"
+    "Sons of Ragnar Part 6 of 10: The Great Heathen Army - when all of Ragnar's sons united to avenge their father and invaded England with 10000 warriors"
+    "Sons of Ragnar Part 7 of 10: Ivar the Boneless conquers York - how a man who could not walk became the king of England"
+    "Sons of Ragnar Part 8 of 10: Bjorn Ironside raids the Mediterranean - the most ambitious Viking expedition ever attempted"
+    "Sons of Ragnar Part 9 of 10: The death of Ivar the Boneless - the end of the most feared Viking who ever lived"
+    "Sons of Ragnar Part 10 of 10: The legacy of Ragnar's sons - how five brothers changed the entire map of Europe forever"
 )
 
 LOG_FILE="outputs/batch_log_$(date +%Y%m%d_%H%M%S).txt"
