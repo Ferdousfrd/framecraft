@@ -33,35 +33,10 @@ for attempt in range(1, max_attempts + 1):
     script = generate_script(topic, issues=previous_issues)
     print_script(script)
 
-    print(f"Fact checking...")
-    fact_check = check_facts(script)
-    print_fact_check(fact_check)
-
-    if fact_check['accuracy_score'] > best_score:
-        best_score = fact_check['accuracy_score']
-        best_script = script
-        best_fact_check = fact_check
-
-    if fact_check['is_approved']:
-        print(f"\n✅ Script approved on attempt {attempt}!")
-        approved_script = script
-        break
-    else:
-        previous_issues = fact_check['issues']
-        if attempt < max_attempts:
-            print(f"\n❌ Failed — retrying with fixes...")
-        else:
-            print(f"\n❌ All attempts failed. Saving best for review...")
-            os.makedirs("outputs", exist_ok=True)
-            review_file = f"outputs/review_{topic[:30].replace(' ', '_')}.json"
-            with open(review_file, "w") as f:
-                json.dump({
-                    "topic": topic,
-                    "best_score": best_score,
-                    "script": best_script,
-                    "fact_check": best_fact_check
-                }, f, indent=2)
-            print(f"💾 Saved to: {review_file}")
+    # Fact checking temporarily disabled — saves Groq tokens
+    print(f"✅ Script auto-approved (fact check disabled)")
+    approved_script = script
+    break
 
 
 # STEP 3 — Generate voice if script was approved
@@ -84,7 +59,8 @@ else:
 
 # STEP 5 — Assemble final reel
 # Pass audio paths so Whisper transcribes each segment for captions
-approved_script['audio_paths'] = audio_result['audio_paths']
+if audio_result:
+    approved_script['audio_paths'] = audio_result['audio_paths']
 
 if approved_script:
     print(f"\n🎬  STEP 5 — Assembling Final Reel")

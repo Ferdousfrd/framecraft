@@ -48,36 +48,35 @@ MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds between retries
 
 
-def build_image_prompt(visual_description: str, topic: str, segment_id: int = 1) -> str:
+def build_image_prompt(visual_description: str, topic: str, segment_id: int = 1, sub_id: int = 1) -> str:
     """
-    Builds an optimized image generation prompt from a visual description.
+    Builds optimized image prompt.
+    sub_id: 1 = first image of segment, 2 = second image of segment
     """
-    # Segment specific negative prompts to force variety
-    segment_negative = {
-        1: "no people in foreground, no portrait, establishing shot only",
-        2: "no battle, no fighting, character portrait only",
-        3: "no single person standing, show battle and multiple warriors",
-        4: "no standing still, show motion and action",
-        5: "no battle, show aftermath and consequence"
+    # Sub-image variation instructions
+    sub_variations = {
+        (1, 2): "different angle and composition from previous image, same setting different detail",
+        (2, 2): "wider shot showing character in action with environment, not a portrait",
     }
-
-    negative_hint = segment_negative.get(segment_id, "")
+    sub_hint = sub_variations.get((segment_id, sub_id), "")
 
     style_suffix = (
-        f"{negative_hint}, "
-        "photorealistic, cinematic photography, film still, "
-        "dramatic cinematic lighting, ultra detailed, "
-        "sharp focus, historically accurate costume and setting, "
-        "epic movie production quality, 8k resolution, "
+        f"{sub_hint}, "
+        "dramatic oil painting style, masterpiece quality, rich textures, "
+        "Rembrandt lighting, deep shadows, vivid dramatic colors, "
+        "Frank Frazetta epic fantasy art style, "
+        "historically accurate costume and setting, "
+        "ultra detailed brushwork, museum quality fine art, "
         "no text, no watermark, no modern elements, "
-        "no extra limbs, anatomically correct, "
-        "professional color grading, anamorphic lens"
+        "no extra limbs, no fused body parts, no centaur, no hybrid creatures, "
+        "anatomically correct humans, anatomically correct horses, "
+        "humans and horses are separate beings, "
+        "no photorealistic, no digital art, no 3D render"
     )
-    full_prompt = f"{visual_description}, {style_suffix}"
-    return full_prompt
+    return f"{visual_description}, {style_suffix}"
 
 
-def generate_ai_image(visual_description: str, segment_id: int, output_dir: str, topic: str) -> str:
+def generate_ai_image(visual_description: str, segment_id: int, output_dir: str, topic: str, sub_id: int = 1) -> str:
     """
     Generates an AI image matching the visual description
     using Pixazo AI with Flux model.
@@ -143,7 +142,7 @@ def generate_ai_image(visual_description: str, segment_id: int, output_dir: str,
 
             # Save image to disk
             os.makedirs(output_dir, exist_ok=True)
-            image_path = os.path.join(output_dir, f"segment_{segment_id}.jpg")
+            image_path = os.path.join(output_dir, f"segment_{segment_id}_{sub_id}.jpg")
 
             with open(image_path, "wb") as f:
                 f.write(img_response.content)
@@ -267,29 +266,13 @@ def apply_ken_burns_effect(image_path: str, output_path: str, duration: int = CL
 def fetch_videos_for_script(script: dict, output_dir: str = None) -> dict:
     """
     Generates cinematic video clips for all segments in a script.
+    Segments 1 and 2 get 2 images each for more dynamic storytelling.
     Each clip = AI generated image + Ken Burns effect animation.
-
-    Args:
-        script:     Script dictionary from generate_script()
-        output_dir: Override output folder. If None, auto-generates
-                    timestamped folder
-
-    Returns:
-        Dictionary with:
-            video_paths: list of video clip paths in segment order
-            output_dir:  base output folder
-            clips_dir:   folder containing video clips
-            images_dir:  folder containing generated images
-            topic:       topic string for reference
-
-    Raises:
-        Exception if any segment fails completely
     """
 
     if not script.get('segments'):
         raise ValueError("Script has no segments")
 
-    # Build timestamped output folder
     if output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         clean_topic = script['topic'].replace(' ', '_')[:30].lower()
@@ -297,93 +280,89 @@ def fetch_videos_for_script(script: dict, output_dir: str = None) -> dict:
     else:
         base_dir = output_dir
 
-    # Separate subfolders for images and clips — keeps things organised
     images_dir = os.path.join(base_dir, "images")
-    clips_dir = os.path.join(base_dir, "clips")
+    clips_dir  = os.path.join(base_dir, "clips")
 
     print(f"\n🎬 Generating video clips for: {script['title']}")
     print(f"📁 Output folder: {base_dir}")
     print(f"{'-'*50}")
 
-    video_paths = []
+    video_paths    = []
     failed_segments = []
 
     for segment in script['segments']:
-        seg_id = segment['id']
-        try:
-            # Step 1 — Generate AI image matching visual description
-            image_path = generate_ai_image(
-                visual_description=segment['visual'],
-                segment_id=seg_id,
-                output_dir=images_dir,
-                topic=script['topic']
-            )
+        seg_id     = segment['id']
+        # Segments 1 and 2 get 2 images, rest get 1
+        num_images = 1
+        sub_duration = segment['duration'] // num_images
 
-            # Step 2 — Animate image with Ken Burns effect
-            clip_path = os.path.join(clips_dir, f"segment_{seg_id}.mp4")
-            os.makedirs(clips_dir, exist_ok=True)
+        for sub_id in range(1, num_images + 1):
 
-            apply_ken_burns_effect(
-                image_path=image_path,
-                output_path=clip_path,
-                duration=segment['duration'],
-                segment_id=seg_id
-            )
+            # Build visual description for this sub-image
+            visual = segment['visual']
+            if sub_id == 2 and seg_id == 1:
+                visual = f"different wide angle view of same world and setting: {visual}"
+            elif sub_id == 2 and seg_id == 2:
+                visual = f"wide shot of character actively doing something according to the story, not posing, not standing still: {visual}"
 
-            video_paths.append(clip_path)
-
-        except Exception as e:
-            print(f"  ⚠️  Segment {seg_id} API failed: {e}")
-            print(f"  Using placeholder for segment {seg_id}...")
-
-            # Fallback — generate placeholder instead of crashing
-            # Pipeline continues, placeholder gets replaced when API recovers
             try:
-                from PIL import Image, ImageDraw
-                placeholder_dir = os.path.join(images_dir)
-                os.makedirs(placeholder_dir, exist_ok=True)
-                img = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), color=(20, 20, 35))
-                draw = ImageDraw.Draw(img)
-                draw.text((IMAGE_WIDTH//2, IMAGE_HEIGHT//2), f"SEGMENT {seg_id}", fill=(200,160,60), anchor="mm")
-                placeholder_img = os.path.join(placeholder_dir, f"segment_{seg_id}.jpg")
-                img.save(placeholder_img)
+                image_path = generate_ai_image(
+                    visual_description=visual,
+                    segment_id=seg_id,
+                    output_dir=images_dir,
+                    topic=script['topic'],
+                    sub_id=sub_id
+                )
 
-                # Apply Ken Burns to placeholder
-                clip_path = os.path.join(clips_dir, f"segment_{seg_id}.mp4")
+                clip_path = os.path.join(clips_dir, f"segment_{seg_id}_{sub_id}.mp4")
                 os.makedirs(clips_dir, exist_ok=True)
+
                 apply_ken_burns_effect(
-                    image_path=placeholder_img,
+                    image_path=image_path,
                     output_path=clip_path,
-                    duration=script['segments'][seg_id-1]['duration'],
+                    duration=sub_duration,
                     segment_id=seg_id
                 )
+
                 video_paths.append(clip_path)
-                print(f"  ✅ Placeholder used for segment {seg_id}")
+                print(f"  ✅ Segment {seg_id}.{sub_id} done")
 
-            except Exception as fallback_error:
-                failed_segments.append(seg_id)
-                print(f"  ❌ Placeholder also failed: {fallback_error}")
+            except Exception as e:
+                print(f"  ⚠️  Segment {seg_id}.{sub_id} failed: {e}")
+                try:
+                    from PIL import Image, ImageDraw
+                    os.makedirs(images_dir, exist_ok=True)
+                    img  = Image.new("RGB", (IMAGE_WIDTH, IMAGE_HEIGHT), color=(20, 20, 35))
+                    draw = ImageDraw.Draw(img)
+                    draw.text((IMAGE_WIDTH//2, IMAGE_HEIGHT//2),
+                              f"SEG {seg_id}.{sub_id}", fill=(200, 160, 60), anchor="mm")
+                    placeholder_img = os.path.join(images_dir, f"segment_{seg_id}_{sub_id}.jpg")
+                    img.save(placeholder_img)
+                    clip_path = os.path.join(clips_dir, f"segment_{seg_id}_{sub_id}.mp4")
+                    os.makedirs(clips_dir, exist_ok=True)
+                    apply_ken_burns_effect(placeholder_img, clip_path, sub_duration, seg_id)
+                    video_paths.append(clip_path)
+                    print(f"  ✅ Placeholder used for segment {seg_id}.{sub_id}")
+                except Exception as fe:
+                    failed_segments.append(f"{seg_id}.{sub_id}")
+                    print(f"  ❌ Placeholder also failed: {fe}")
 
-    # Only crash if placeholder also failed
     if failed_segments:
         import shutil
         if os.path.exists(base_dir):
             shutil.rmtree(base_dir)
-        raise Exception(
-            f"Video generation failed completely for segments: {failed_segments}"
-        )
+        raise Exception(f"Video generation failed for segments: {failed_segments}")
 
     print(f"\n✅ All {len(video_paths)} video clips generated!")
     print(f"📁 Saved to: {base_dir}")
 
     return {
         "video_paths": video_paths,
-        "output_dir": base_dir,
-        "clips_dir": clips_dir,
-        "images_dir": images_dir,
-        "topic": script['topic']
+        "output_dir":  base_dir,
+        "clips_dir":   clips_dir,
+        "images_dir":  images_dir,
+        "topic":       script['topic']
     }
-
 
 def cleanup_video(output_dir: str) -> None:
     """

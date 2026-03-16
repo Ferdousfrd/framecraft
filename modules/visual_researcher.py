@@ -18,12 +18,13 @@
 # Author: Ferdous
 # Part of: FrameCraft Pipeline
 
-import os
+import os, re
 import json
-from groq import Groq
-from config.settings import GROQ_API_KEY
+from google import genai
+from google.genai import types
+from config.settings import GEMINI_API_KEY
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-client = Groq(api_key=GROQ_API_KEY)
 
 
 def research_visual_context(topic: str, language: str = "en") -> dict:
@@ -119,18 +120,22 @@ def research_visual_context(topic: str, language: str = "en") -> dict:
     Be extremely specific and historically accurate.
     Focus on visual details that an image AI needs to generate correct images.
     Include colors, materials, specific armor types, horse breeds if known.
+    IMPORTANT: In your JSON response, never use apostrophes or single quotes inside string values. Write "Ragnar's" as "Ragnar s" or rephrase to avoid it. Return only valid JSON.
     """
 
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1500
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=2500,
+                    response_mime_type="application/json"
+                )
             )
+            raw = response.text.strip()
 
-            raw = response.choices[0].message.content.strip()
 
             # Clean JSON if wrapped in markdown
             if "```json" in raw:
@@ -138,7 +143,18 @@ def research_visual_context(topic: str, language: str = "en") -> dict:
             elif "```" in raw:
                 raw = raw.split("```")[1].split("```")[0].strip()
 
-            research = json.loads(raw)
+            try:
+                research = json.loads(raw)
+            except json.JSONDecodeError:
+                raw_fixed = raw.replace("'", "\\'").replace("\u2019", "\\'").replace("\u201c", '\\"').replace("\u201d", '\\"')
+                try:
+                    research = json.loads(raw_fixed)
+                except json.JSONDecodeError:
+                    match = re.search(r'\{.*\}', raw, re.DOTALL)
+                    if match:
+                        research = json.loads(match.group())
+                    else:
+                        raise
 
             # Print summary
             main = research.get("main_character", {})

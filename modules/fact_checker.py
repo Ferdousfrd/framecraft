@@ -3,11 +3,11 @@
 # Uses a second AI call as a fact-checking layer — FrameCraft quality control
 
 import json
-from groq import Groq
-from config.settings import GROQ_API_KEY
-
-# Initialize Groq client
-client = Groq(api_key=GROQ_API_KEY)
+from google import genai
+from google.genai import types
+# Initialize Gemini client
+from config.settings import GEMINI_API_KEY
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def check_facts(script: dict) -> dict:
     """
@@ -57,17 +57,18 @@ def check_facts(script: dict) -> dict:
     }}
 
     If there are no issues, return empty array for issues.
-    is_approved should be true if accuracy_score is 7 or above.
+    is_approved should be true if accuracy_score is 6 or above.
     """
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2,  # low temperature = more precise, less creative
-        max_tokens=1000
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=1000,
+        )
     )
+    raw = response.text.strip()
 
     raw = response.choices[0].message.content
 

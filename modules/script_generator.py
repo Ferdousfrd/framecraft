@@ -1,264 +1,334 @@
 # modules/script_generator.py
 # FrameCraft — Script Generation Module
-# 
-# This module is responsible for generating 60-second narration scripts
-# using the Groq AI API. It supports two modes:
-#   1. Fresh generation — generates a brand new script for a topic
-#   2. Fix mode — takes a failed script + its issues and regenerates with fixes
+#
+# Uses Google Gemini for script generation (higher token limits than Groq).
+# Generates story-driven 60-second narration scripts with 5 segments.
+# Supports multi-part series with correct story arc per part.
 #
 # Author: Ferdous
 # Part of: FrameCraft Pipeline
 
 import json
-from groq import Groq
-from config.settings import GROQ_API_KEY
+import re
+from google import genai
+from google.genai import types
+from config.settings import GEMINI_API_KEY
+client = genai.Client(api_key=GEMINI_API_KEY)
 from modules.visual_researcher import research_visual_context, format_character_description
 
-# Initialize the Groq client with our API key
-# This client is reused for all API calls in this module
-client = Groq(api_key=GROQ_API_KEY)
+
+def _detect_series_info(topic: str) -> dict:
+    """
+    Detects if topic is part of a series and extracts part info.
+    Returns dict with: is_series, part_num, total_parts, series_name
+    """
+    import re
+    info = {"is_series": False, "part_num": 1, "total_parts": 1, "series_name": ""}
+
+    # Match "Part X of Y" or "Part X/Y"
+    match = re.search(r'part\s+(\d+)\s+of\s+(\d+)', topic, re.IGNORECASE)
+    if match:
+        info["is_series"]   = True
+        info["part_num"]    = int(match.group(1))
+        info["total_parts"] = int(match.group(2))
+        # Series name = everything before "Part"
+        info["series_name"] = topic[:match.start()].strip(" -—:")
+
+    return info
+
+
+def _build_series_instructions(series: dict) -> str:
+    """Builds story arc instructions based on which part this is."""
+
+    if not series["is_series"]:
+        return ""
+
+    part     = series["part_num"]
+    total    = series["total_parts"]
+    is_first = part == 1
+    is_last  = part == total
+
+    instructions = f"""
+SERIES STORY ARC — This is Part {part} of {total}:
+- Tell ONLY what happens in Part {part}. Do NOT jump ahead to later parts.
+- The full story arc spans all {total} parts. Stay in your lane.
+- Each segment covers only events that belong to Part {part}'s chapter.
+"""
+
+    if is_first:
+        instructions = f"""
+SERIES STORY ARC — This is Part {part} of {total}:
+- Tell ONLY what happens in Part {part}. Do NOT jump ahead to later parts.
+- The full story arc spans all {total} parts. Stay in your lane.
+- Each segment covers only events that belong to Part {part}'s chapter.
+"""
+
+    if is_first:
+        instructions += """
+PART 1 RULES:
+- Segment 1: Hook — establish the world and stakes dramatically
+- Segment 2: Introduce the main character with vivid detail — this is the ONLY part where you describe who they are
+- Segment 3: Show their first challenge or formative moment
+- Segment 4: First major achievement or turning point
+- Segment 5: Cliffhanger ending — hint at what's coming in Part 2
+  Example: "But his greatest test had not yet begun..."
+  Example: "Little did he know, destiny had other plans..."
+"""
+
+    elif is_last:
+        instructions += f"""
+PART {part} RULES (FINAL PART):
+- Segment 1: Pick up where Part {part-1} left off — new scene, new challenge, NO re-introduction
+- Segments 2-4: Build to the final climax of the whole story
+- Segment 5: Powerful conclusion — legacy, what they left behind, why we remember them
+  This is the PAYOFF for viewers who watched all {total} parts
+
+CHARACTER RULE — CRITICAL:
+- Viewer already knows who the character is from Part 1 — DO NOT re-introduce them
+- NEVER write "[name], son of..." or describe their appearance again
+- Jump straight into the action and events of this chapter
+- Every segment should show EVENTS not character portraits
+"""
+    else:
+        instructions += f"""
+PART {part} RULES (MIDDLE PART):
+- Segment 1: Pick up where Part {part-1} left off — new scene, new challenge, NO re-introduction
+- Segments 2-4: This part's unique events only — new locations, new battles, new challenges
+- Segment 5: New cliffhanger — something even bigger is coming in Part {part+1}
+  Example: "But nothing could prepare him for what came next..."
+
+CHARACTER RULE — CRITICAL:
+- Viewer already knows who the character is from Part 1 — DO NOT re-introduce them
+- NEVER write "[name], son of..." or describe their appearance again
+- NEVER do a character portrait shot in Parts 2, 3 or 4
+- Every segment shows EVENTS and ACTION — not who the character is
+"""
+
+
+    return instructions
+
+
+def _build_visual_rules(topic: str) -> str:
+    """
+    Builds visual rules customized to the topic.
+    Detects if topic is land-based vs sea-based to avoid wrong settings.
+    """
+    topic_lower = topic.lower()
+
+    # Detect topic type to avoid wrong settings
+    is_sea_topic    = any(w in topic_lower for w in ["raid", "sail", "ship", "sea", "fleet", "mediterranean", "voyage"])
+    is_land_topic   = any(w in topic_lower for w in ["battle", "siege", "king", "throne", "death", "life", "legacy", "army"])
+    is_greek_roman  = any(w in topic_lower for w in ["alexander", "roman", "caesar", "greek", "sparta", "athens", "persian"])
+    is_viking       = any(w in topic_lower for w in ["viking", "norse", "ragnar", "bjorn", "ivar", "leif", "odin"])
+    is_mongol       = any(w in topic_lower for w in ["mongol", "genghis", "khan", "horde"])
+
+    # Setting-specific style notes
+    setting_note = ""
+    if is_greek_roman:
+        setting_note = "Setting: Ancient Greek/Roman/Persian era — marble columns, bronze armor, Mediterranean landscapes, olive trees, dusty plains. NO longships, NO Viking elements."
+    elif is_viking:
+        setting_note = "Setting: Viking Age Scandinavia — wooden halls, fjords, iron helmets, fur cloaks, axes and shields, Norse runes."
+        if not is_sea_topic:
+            setting_note += " This story is LAND-BASED — show forests, halls, battlefields. Longships ONLY if narration specifically mentions sailing."
+    elif is_mongol:
+        setting_note = "Setting: Mongol Empire — vast steppes, felt gers/yurts, horse archers, lamellar armor, Central Asian landscapes."
+
+    return f"""
+VISUAL RULES — LOCKED, NO EXCEPTIONS:
+
+STYLE: Every single segment MUST end with "dramatic oil painting style, masterpiece quality, rich textures, deep shadows"
+- Think Rembrandt lighting meets Frank Frazetta epic fantasy art
+- Rich colors: deep reds, golds, dark blues, warm firelight
+- NEVER use words: photorealistic, cinematic, film still, photograph, digital art
+
+{setting_note}
+
+STORY-VISUAL SYNC — CRITICAL:
+- Each visual must show EXACTLY what the narrator is saying at that moment
+- If narration says "he led 300 warriors" → show 300 warriors, not 1 man
+- If narration says "Paris burned" → show Paris burning, not a ship
+- If narration says "he died alone" → show a single figure, not a battle
+
+VARIETY — 5 DIFFERENT SCENES, NO REPEATS:
+- Segment 1: WIDE mysterious establishing shot — dark, foreboding, epic scale. 
+  Show the WORLD before the story begins. Misty fjords, dark stormy skies, 
+  vast armies gathering at dawn, mysterious ancient landscapes. NO main character.
+  Make viewer feel something BIG is about to happen.
+- Segment 2: CHARACTER shot — introduce hero with their army/environment behind them
+- Segment 3: CONFLICT — battle, clash, obstacle. Multiple warriors, chaos, action
+- Segment 4: CLIMAX — the decisive moment, movement, peak drama
+- Segment 5: AFTERMATH — consequence, legacy. Empty battlefield OR symbolic final image
+
+NEVER repeat the same location, same composition, or same mood across segments.
+NEVER show a lone figure standing on a ship unless narration describes exactly that.
+
+SHOT COMPOSITION — always specify one:
+- "wide establishing shot looking down" = shows scale
+- "low angle looking up" = makes subject look powerful  
+- "eye level medium shot" = intimate, personal
+- "over the shoulder wide shot" = viewer in the scene
+- "high angle wide shot" = shows battlefield scale
+"""
+
 
 def generate_script(topic: str, language: str = "en", skip_research: bool = False, issues: list = None) -> dict:
     """
-    Generates a 60-second narration script for a given topic.
-    
+    Generates a 60-second story-driven narration script using Gemini.
+
     Args:
-        topic:    The video topic e.g. "Viking raid on Paris 845 AD"
-        language: Language code — "en" English, "bn" Bengali, "fi" Finnish
-        issues:   Optional list of fact-check issues from previous attempt.
-                  If provided, AI will try to fix these specific problems.
-    
+        topic:         The video topic e.g. "Bjorn Ironside Part 1 of 4"
+        language:      Language code — "en", "bn", "fi"
+        skip_research: Skip visual research (faster, less accurate)
+        issues:        Fact-check issues from previous attempt to fix
+
     Returns:
-        A dictionary containing the full script split into 5 segments.
-        Each segment has: narration, visual description, duration
+        Script dictionary with 5 segments
     """
 
-    # Build the fix instructions if we have issues from a previous attempt
-    # This is the feedback loop — we tell the AI exactly what went wrong
+    # Detect series info
+    series = _detect_series_info(topic)
+
+    # Build fix instructions if retrying
     fix_instructions = ""
     if issues:
-        fix_instructions = """
-        IMPORTANT — Previous version of this script had these problems.
-        You MUST fix all of them in this new version:
-        """
+        fix_instructions = "\nFIX THESE ISSUES FROM PREVIOUS ATTEMPT:\n"
         for i, issue in enumerate(issues, 1):
             fix_instructions += f"""
-        Issue {i}: {issue['type'].upper()}
-        Original claim: {issue['original']}
-        Problem: {issue['issue']}
-        Required fix: {issue['correction']}
-        """
+Issue {i}: {issue['type'].upper()}
+Original: {issue['original']}
+Problem:  {issue['issue']}
+Fix:      {issue['correction']}
+"""
 
-    # Research historical visual context before writing script
+    # Research historical visual context
     visual_context = ""
     if not skip_research:
-        research = research_visual_context(topic, language)
+        research    = research_visual_context(topic, language)
         visual_context = format_character_description(research)
         if visual_context:
             print(f"  ✅ Visual research injected into script prompt")
 
-    # Main prompt sent to the AI
-    # Double curly braces {{ }} are used because we're inside an f-string
-    # and we need literal { } characters in the JSON template
-
+    # Build full prompt
     prompt = f"""
-    You are a cinematic script writer for IronNorth, a viral short-form 
-    history channel. Your reels make people feel like they are INSIDE history.
-    Every visual must match the narration exactly — like a movie scene.
+You are a cinematic script writer for IronNorth, a viral short-form history channel.
+Your reels make people feel like they are INSIDE history.
+Write a 60-second script about: {topic}
 
-    Create a 60-second script about: {topic}
+{_build_series_instructions(series)}
 
-    SERIES AWARENESS:
-    - If the topic mentions "Part X of Y" this is part of a multi-part series
-    - Start Part 1 with a strong hook introducing the character
-    - Parts 2-4 should briefly reference previous parts naturally in narration
-    - Final part should feel like an epic conclusion
-    - Each part must end with a subtle cliffhanger or "what comes next" feeling
-      so viewers follow for the next part
-    - Example ending: "But this was only the beginning...", 
-      "His greatest challenge was yet to come...",
-      "The snake pit awaited..."
+NARRATION RULES:
+- Exactly 5 segments
+- Language: {language}
+- Tone: dramatic, like a movie trailer narrator — powerful, not academic
+- Segment 1: Hook — first 3 words MUST grab attention instantly
+  Good: "Five thousand warriors...", "One sword blow...", "Paris was burning..."
+  Bad: "In the year...", "Today we talk about...", "This is the story..."
+- Segments 2-4: Build the specific story of THIS PART only — vivid details, names, numbers
+- Segment 5: {"Cliffhanger ending hinting at Part " + str(series["part_num"]+1) if series["is_series"] and series["part_num"] < series["total_parts"] else "Powerful legacy closing — why we still remember them"}
+- Only historically verified facts. Omit if unsure rather than invent.
+- AVOID specific troop numbers unless historically verified (e.g. don't say "5000 warriors" — say "a vast army")
+- AVOID specific dates unless certain — say "in the 9th century" not "in 847 AD"
 
-    NARRATION RULES:
-    - Exactly 5 segments, each 1-2 sentences
-    - Language: {language}
-    - Tone: dramatic, cinematic, like a movie trailer narrator
-    - Segment 1: Hook — first 3 words must stop the scroll. Start with tension,
-      danger, or an astonishing fact. Example: "120 Viking longships...",
-      "One man stood...", "Paris was burning..."
-    - Segments 2-4: Build the story with vivid details — names, numbers, emotions
-    - Segment 5: Powerful closing — the consequence, the legacy, why it matters
-    - Only historically verified facts. Never invent names, dates or events.
-    - If unsure about a detail, omit it rather than guess.
+{_build_visual_rules(topic)}
 
-    VISUAL RULES — THIS IS CRITICAL:
-    - Each visual must show EXACTLY what the narration describes at that moment
-    - PHOTOREALISTIC style — like a movie still, NOT painting or illustration
-    - Real skin texture, real fabric, real dirt, real lighting — cinematic realism
-    - NEVER say oil painting, illustration, artwork, animated or drawn
-    - Each of the 5 segments MUST show a completely different scene
-    - Different location, different subject, different mood per segment
-    - Never generate the same scene twice — each segment tells a new visual story
-    - Segment 1 ≠ Segment 2 ≠ Segment 3 ≠ Segment 4 ≠ Segment 5
+{visual_context}
 
-    VARIETY RULE — CRITICAL:
-    - Each of the 5 segments MUST show a completely different scene
-    - Different location, different subject, different mood per segment
-    - Segment 1: establishing world — ships, army, landscape, NO main character yet
-    - Segment 2: introduce character — character portrait in their environment
-    - Segment 3: conflict/challenge — battle, storm, obstacle, enemy
-    - Segment 4: climax — the decisive moment, action, peak drama
-    - Segment 5: aftermath — consequence, legacy, emotional closing
-    - NEVER show the same location twice
-    - NEVER show character alone on ship more than once
-    
-    SHOT TYPES — vary these across segments for cinematic feel:
-    - Segment 1: WIDE establishing shot — show the scale, the world, the setting
-    - Segment 2: MEDIUM shot — character getting ready to fight in front of an army, in battlefield
-    - Segment 3: WIDE shot — dramatic detail
-    - Segment 4: ACTION shot — movement, battle, charge, dramatic moment
-    - Segment 5: WIDE or MEDIUM closing shot — powerful final image
-    
-    CHARACTER CONSISTENCY:
-    - Only describe character appearance in segment 2 (introduction)
-    - Segments 1, 3, 4, 5 — DO NOT describe the character's face or clothing
-    - Instead show the WORLD, the BATTLE, the ENVIRONMENT, the CONSEQUENCE
-    - Segment 1: NO character at all — just the world/army/landscape
-    - Segment 3: battle scene with multiple warriors — no named character
-    - Segment 4: action moment — character from behind or silhouette only
-    - Segment 5: aftermath — empty battlefield, legacy, symbolic image
-    
-    CAMERA ANGLE — always specify:
-    - "low angle looking up" = makes subject look powerful/intimidating
-    - "eye level" = intimate, personal, relatable  
-    - "high angle looking down" = shows scale of army/battlefield
-    - "over the shoulder" = puts viewer in the scene
-    
-    LIGHTING AND MOOD:
-    - Dawn/golden hour = hope, new beginning, epic journey
-    - Dusk/red sky = danger, battle, blood, end of era
-    - Overcast/grey = grim, determined, foreboding
-    - Torchlight/fire = chaos, raid, burning, victory
-    {visual_context}
-    SETTING DETAILS:
-    - Always specify time period appropriate details
-    - Viking era: longships, fur cloaks, iron helmets, axes, shields
-    - Always medieval/ancient — zero modern elements
-    - NEVER: modern buildings, aerial city views, present day anything
-    
-    EXAMPLE GOOD VISUALS:
-    - Segment 1 wide: "Wide shot of 300 Viking longships filling a dark fjord 
-      at dawn, mist rising from black water, hundreds of warriors at oars, 
-      red shields lining the hulls, photorealistic cinematic, low angle"
-    - Segment 2 medium-wide: "Ragnar Lothbrok, tall lean Viking, dark hair short beard, 
-      worn leather and iron armor, standing at ship stern commanding his crew, 
-      10 warriors rowing behind him, ocean horizon ahead, golden dawn light, 
-      medium-wide shot showing character AND crew, photorealistic"
-    - Segment 3: MEDIUM ACTION shot — two warriors fighting, weapons clashing, battle scene, never a close up of just hands
-    - Segment 4 action wide: "Wide battlefield shot, hundreds of Viking warriors 
-      clashing with enemy army, swords and axes raised, dust and smoke filling 
-      the air, bodies in motion everywhere, chaos of battle, low angle wide shot, 
-      photorealistic, no single character focus"
-    - Segment 5 wide: "High angle wide shot of Viking camp at night, 
-      hundreds of fires burning, longships beached on river bank, 
-      Paris burning in distance, aftermath of battle, dead bodies on the ground, crows flying, atmospheric photorealistic"
-      
-    EXAMPLE BAD VISUALS:
-    - "Viking warriors fighting" — too generic
-    - "Aerial footage of Paris" — modern/aerial
-    - "Oil painting of battle scene" — wrong style
-    - "Animated battle map" — wrong style
+{fix_instructions}
 
-    {fix_instructions}
+Return ONLY valid JSON, nothing else — no explanation, no markdown, no code blocks:
+{{
+    "title": "short punchy title max 6 words",
+    "topic": "{topic}",
+    "language": "{language}",
+    "segments": [
+        {{
+            "id": 1,
+            "narration": "words spoken by narrator",
+            "visual": "detailed visual description ending with: dramatic oil painting style, masterpiece quality, rich textures",
+            "duration": 12
+        }},
+        {{
+            "id": 2,
+            "narration": "words spoken by narrator",
+            "visual": "detailed visual description ending with: dramatic oil painting style, masterpiece quality, rich textures",
+            "duration": 12
+        }},
+        {{
+            "id": 3,
+            "narration": "words spoken by narrator",
+            "visual": "detailed visual description ending with: dramatic oil painting style, masterpiece quality, rich textures",
+            "duration": 12
+        }},
+        {{
+            "id": 4,
+            "narration": "words spoken by narrator",
+            "visual": "detailed visual description ending with: dramatic oil painting style, masterpiece quality, rich textures",
+            "duration": 12
+        }},
+        {{
+            "id": 5,
+            "narration": "words spoken by narrator",
+            "visual": "detailed visual description ending with: dramatic oil painting style, masterpiece quality, rich textures",
+            "duration": 12
+        }}
+    ]
+}}
+"""
 
-    Return ONLY a JSON object in this exact format, nothing else:
-    {{
-        "title": "short punchy title, max 6 words, makes people want to watch",
-        "topic": "{topic}",
-        "language": "{language}",
-        "segments": [
-            {{
-                "id": 1,
-                "narration": "the words spoken in this segment",
-                "visual": "cinematic shot description matching narration exactly",
-                "duration": 12
-            }},
-            {{
-                "id": 2,
-                "narration": "the words spoken in this segment",
-                "visual": "description of what should be shown visually",
-                "duration": 12
-            }},
-            {{
-                "id": 3,
-                "narration": "the words spoken in this segment",
-                "visual": "description of what should be shown visually",
-                "duration": 12
-            }},
-            {{
-                "id": 4,
-                "narration": "the words spoken in this segment",
-                "visual": "description of what should be shown visually",
-                "duration": 12
-            }},
-            {{
-                "id": 5,
-                "narration": "the words spoken in this segment",
-                "visual": "description of what should be shown visually",
-                "duration": 12
-            }}
-        ]
-    }}
-    """
+    # Call Gemini
+    for attempt in range(1, 4):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    max_output_tokens=4000,
+                )
+            )
+            raw = response.text.strip()
 
-    # Make the API call to Groq
-    # temperature=0.7 means moderately creative — not robotic, not too random
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=1000
-    )
+            # Clean markdown if present
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0].strip()
 
-    # Extract the raw text response from the API response object
-    raw = response.choices[0].message.content
+            # Parse JSON
+            try:
+                script = json.loads(raw)
+            except json.JSONDecodeError:
+                # Fix common issues: smart quotes, apostrophes in strings
+                raw_fixed = raw.replace("'", "\\'").replace("\u2019", "\\'").replace("\u201c", '\\"').replace("\u201d", '\\"')
+                try:
+                    script = json.loads(raw_fixed)
+                except json.JSONDecodeError:
+                    match = re.search(r'\{.*\}', raw, re.DOTALL)
+                    if match:
+                        try:
+                            script = json.loads(match.group())
+                        except json.JSONDecodeError:
+                            import ast
+                            script = ast.literal_eval(match.group())
+                    else:
+                        raise
 
-    # Strip markdown code blocks if AI wrapped response in ``` blocks
-    # This is a common AI behavior we need to handle
-    raw = raw.strip()
-    if raw.startswith("```json"):
-        raw = raw[7:]
-    if raw.startswith("```"):
-        raw = raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
+            return script
 
-    # Parse the JSON string into a Python dictionary
-    script = json.loads(raw)
-    
-    return script
+        except Exception as e:
+            print(f"  ⚠️  Gemini attempt {attempt} failed: {e}")
+            if attempt == 3:
+                raise
 
 
 def print_script(script: dict) -> None:
-    """
-    Prints a script in a readable format for review.
-    
-    Args:
-        script: The script dictionary returned by generate_script()
-    """
     print(f"\n{'='*50}")
     print(f"TITLE: {script['title']}")
     print(f"TOPIC: {script['topic']}")
     print(f"LANGUAGE: {script['language']}")
     print(f"{'='*50}\n")
-    
     for segment in script['segments']:
         print(f"SEGMENT {segment['id']} ({segment['duration']}s)")
         print(f"NARRATION: {segment['narration']}")
         print(f"VISUAL:    {segment['visual']}")
         print(f"{'-'*50}")
-
-
